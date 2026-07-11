@@ -149,7 +149,8 @@ Action {
   type: ActionType                   // application | script | url | folder
   bundleID: String?                  // com.apple.Safari (application)
   appPath: String?                   // used when bundleID is nil (application)
-  arguments: [String]                // documents / arguments, one per line
+  arguments: [String]                // one per line; passed as launch arguments
+                                     // (NSWorkspace.OpenConfiguration.arguments)
   scriptCommand: String?             // shell command or .sh path (script)
   url: String?                       // (url)
   folderPath: String?                // (folder)
@@ -176,7 +177,10 @@ Safari, Notes, Mail, Music, Terminal (plus empty slots), and additional Web / De
 
 ## Ring Window & Presentation
 
-- Borderless, transparent **`NSPanel`**: `styleMask = [.borderless, .nonactivatingPanel]`,
+- Borderless, transparent **`NSPanel`** subclass that **overrides `canBecomeKey`
+  (and `canBecomeMain`) to return `true`** so it can receive keyboard events for
+  navigation despite being borderless/non-activating:
+  `styleMask = [.borderless, .nonactivatingPanel]`,
   `level = .floating`, `isOpaque = false`, `backgroundColor = .clear`,
   `hasShadow = false`, `collectionBehavior` includes `.canJoinAllSpaces` and
   `.fullScreenAuxiliary`. Hosts `RingView` via `NSHostingView`.
@@ -188,6 +192,9 @@ Safari, Notes, Mail, Music, Terminal (plus empty slots), and additional Web / De
   orders out on close. Because it is `.nonactivatingPanel`, it overlays the
   frontmost app without a heavy app switch; the previously-active app is restored
   on close so launched actions target the right context.
+- **Click-outside dismissal** is implemented with a global + local
+  `NSEvent` monitor for left/right mouse-down while the ring is open; a click
+  outside the panel's content closes it.
 
 ## Ring UI Composition
 
@@ -221,8 +228,11 @@ Safari, Notes, Mail, Music, Terminal (plus empty slots), and additional Web / De
 ## Launching (`ActionRunner`)
 
 - **application:** resolve bundle id → app URL (fallback `appPath`); open via
-  `NSWorkspace.shared.openApplication(at:configuration:)`, passing `arguments`
-  as document URLs when present.
+  `NSWorkspace.shared.openApplication(at:configuration:completionHandler:)`,
+  setting `OpenConfiguration.arguments` to the action's `arguments` (each line is
+  a **launch argument**, not a document). Opening files as document URLs is a
+  later enhancement, kept out of v1 to avoid ambiguity. The settings UI labels
+  this field "Arguments — one per line."
 - **script:** run through an injected `ProcessRunning` seam — default
   implementation executes `/bin/sh -lc "<scriptCommand>"` (or the `.sh` path) via
   `Process`, detached, capturing failure. The seam makes command construction
@@ -236,7 +246,10 @@ Safari, Notes, Mail, Music, Terminal (plus empty slots), and additional Web / De
 ## Settings Window ("Control Ring")
 
 A standard titled `NSWindow` hosting a **three-pane** SwiftUI layout that mirrors
-the reference screenshot:
+the reference screenshot. Unlike the ring, opening Settings **activates the app**
+(`NSApp.activate(ignoringOtherApps: true)` and switches to
+`.regular`/accessory as needed) so the window comes forward and accepts normal
+focus:
 
 - **Modes sidebar (left):** list of modes with per-mode item count; add
   ("+ Empty Mode"), reorder, and delete.
@@ -247,7 +260,8 @@ the reference screenshot:
   and controls to assign / clear / reorder; selecting a slot loads it into the
   inspector.
 - **Action inspector (right):** `title`, `subtitle`, **Type** dropdown, **bundle
-  ID**, **app path**, **arguments** (one per line), **Presentation** (icon +
+  ID**, **app path**, **arguments** (launch arguments, one per line),
+  **Presentation** (icon +
   color), **Availability** ("Shown in") dropdown.
 - **Bottom bar:** hotkey hint (`⌘⌥⇧[ summons the ring`), **Reveal Config**
   (reveals `config.json` in Finder), **Restore Defaults** (rewrites defaults after
@@ -278,7 +292,9 @@ the reference screenshot:
 - App is **not sandboxed** (it launches arbitrary apps/scripts and reads a config
   file), consistent with local, non-App-Store distribution.
 - Script actions run user-authored commands with the user's own privileges; the
-  app adds no elevation. No secrets are stored in config.
+  app adds no elevation. Note that user-authored script commands may themselves
+  contain sensitive values; the config file is stored unencrypted under the
+  user's own Application Support directory (standard for local app config).
 
 ## Testing Strategy
 
