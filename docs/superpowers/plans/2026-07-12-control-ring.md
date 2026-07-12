@@ -71,7 +71,7 @@ Tests/ControlRingTests/
 - Create: `Package.swift`
 - Create: `Sources/ControlRing/main.swift`
 - Create: `Sources/ControlRingKit/App/ControlRingMain.swift`
-- Create: `scripts/run.sh`, `scripts/build-app.sh` (build-app.sh fully written in Task 18)
+- Create: `scripts/run.sh`, `scripts/build-app.sh` (build-app.sh fully written in Task 16)
 - Test: `Tests/ControlRingTests/CoreSpecsCodableTests.swift` (starts as a harness smoke test)
 
 - [ ] **Step 1: Write the failing test**
@@ -1171,8 +1171,8 @@ public final class RingViewModel: ObservableObject {
     }
 
     public func reset() {
-        focus = .outer; outerIndex = 0; innerIndex = currentModeIndex
         clampModeIndex()
+        focus = .outer; outerIndex = 0; innerIndex = currentModeIndex
     }
 
     private func clampModeIndex() {
@@ -1398,7 +1398,7 @@ git add -A && git commit -m "feat: add ActionRunner with testable LaunchPlan and
 - Test: `Tests/ControlRingTests/HotKeyCarbonTests.swift`
 
 The **mapping** is unit-tested; `RegisterEventHotKey` wiring is verified manually
-in Task 18's smoke checklist.
+in Task 16's smoke checklist.
 
 - [ ] **Step 1: Write failing tests**
 
@@ -1530,7 +1530,7 @@ public final class HotKeyManager {
 - [ ] **Step 5: Run to verify it passes**
 
 Run: `swift test 2>&1 | tail -20`
-Expected: mapping tests PASS. (Manager compiles; runtime firing verified in Task 18.)
+Expected: mapping tests PASS. (Manager compiles; runtime firing verified in Task 16.)
 
 - [ ] **Step 6: Commit**
 
@@ -1952,15 +1952,19 @@ public final class RingWindowController: NSObject, NSWindowDelegate {
     private func handleActivation() {
         switch viewModel.activate() {
         case .runAction(let action):
-            if let error = runner.run(action) {
+            // Plan-level failures are synchronous — keep the ring open to show them.
+            if case .failure(let error) = runner.plan(for: action) {
                 NSLog("ControlRing: \(error)")
                 viewModel.transientMessage = error
-                scheduleClearMessage()   // ring stays open to show the error
-            } else {
-                let prev = previousApp
-                hide()
-                prev?.activate()
+                scheduleClearMessage()
+                return
             }
+            // Success: restore the user's previous app first (so scripts/URLs target the
+            // right foreground context), close the ring, then run the action.
+            let prev = previousApp
+            hide()
+            prev?.activate()
+            _ = runner.run(action)
         case .switchMode:
             break // ring stays open
         case .addMode:
