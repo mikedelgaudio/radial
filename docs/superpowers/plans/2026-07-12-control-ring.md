@@ -1449,11 +1449,12 @@ public extension HotKeySpec {
     }
 
     var displayString: String {
+        // Order matches the app's convention/screenshot: ⌘⌥⇧⌃ then key.
         var s = ""
-        if modifiers.contains("control") { s += "⌃" }
+        if modifiers.contains("command") { s += "⌘" }
         if modifiers.contains("option")  { s += "⌥" }
         if modifiers.contains("shift")   { s += "⇧" }
-        if modifiers.contains("command") { s += "⌘" }
+        if modifiers.contains("control") { s += "⌃" }
         s += HotKeySpec.keyLabel(for: keyCode)
         return s
     }
@@ -1573,11 +1574,21 @@ public enum Theme {
         }
     }
 
+    /// Base amber accent. The ring tints selection/glow by the ACTIVE MODE's color;
+    /// resolve that with `accent(for:)` (falls back to amber).
     public static let accent = palette["amber"]!
-    /// Dark glass base for the ring; adapts via material behind it.
-    public static let ringPlate = Color.black.opacity(0.55)
-    public static let slotPlate = Color.white.opacity(0.06)
-    public static let hairline = Color.white.opacity(0.10)
+    public static func accent(for mode: Mode?) -> Color {
+        guard let mode else { return accent }
+        return color(mode.color)
+    }
+
+    /// Appearance-aware ring plate: dark glass in dark mode, light glass in light mode.
+    public static func ringPlate(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color.black.opacity(0.55) : Color.white.opacity(0.62)
+    }
+    /// Neutral surfaces that read acceptably in both appearances.
+    public static let slotPlate = Color.gray.opacity(0.16)
+    public static let hairline = Color.gray.opacity(0.28)
 }
 ```
 
@@ -1688,21 +1699,17 @@ git add -A && git commit -m "feat: add Theme, IconView, AppIconResolver, Debounc
 - Create: `Sources/ControlRingKit/App/AppDelegate.swift`
 - Modify: `Sources/ControlRingKit/App/ControlRingMain.swift` (remove the temporary AppDelegate stub added in Task 1)
 
-`AppDelegate` owns the singletons and wires them together. Ring/Settings controllers
-are created here (their types come from Tasks 13 & 15 — implement AppDelegate now
-with those references; the project will not fully build until Task 13/15 land, so
-this task's build check tolerates "cannot find RingWindowController"; each later
-task re-runs the build to green).
-
-> To keep the build green task-by-task, implement AppDelegate in **two passes**:
-> Pass A (this task) wires only the status item + ConfigStore + HotKeyManager and
-> prints on fire. Pass B (end of Task 15) swaps the print for real controllers.
+`AppDelegate` owns the singletons and wires them together. It references
+`RingWindowController` and `SettingsWindowController`, which are **created in
+Task 13**. Therefore the tree intentionally does **not** build at the end of this
+task — it goes green at the end of Task 13 (which adds those types and the commit).
+This is the only intentional cross-task build gap; every other task ends green.
 
 - [ ] **Step 1: Remove the stub**
 
 Delete the temporary `final class AppDelegate ...` line from `ControlRingMain.swift`.
 
-- [ ] **Step 2: Implement `AppDelegate.swift` (Pass A)**
+- [ ] **Step 2: Implement `AppDelegate.swift`**
 
 ```swift
 import AppKit
@@ -1712,7 +1719,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     let hotKeyManager = HotKeyManager()
     private var statusItem: NSStatusItem?
 
-    // Set in Pass B (Task 15):
+    // Real controllers (their types are added in Task 13):
     var ringController: RingWindowController?
     var settingsController: SettingsWindowController?
 
@@ -1720,7 +1727,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         store.load()
         setUpStatusItem()
 
-        // Pass B replaces this block with real controller creation + summon().
         ringController = RingWindowController(store: store)
         settingsController = SettingsWindowController(store: store)
 
@@ -1761,13 +1767,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 ```
 
-- [ ] **Step 3: Build verification (expected to fail until Task 13/15)**
+- [ ] **Step 3: Build verification (expected to fail until Task 13)**
 
 Run: `swift build 2>&1 | tail -20`
 Expected: FAILS with "cannot find 'RingWindowController'/'SettingsWindowController'".
-This is expected — proceed to Task 13. (Do not commit a non-building tree; commit
-happens at the end of Task 13 once the ring controller exists, and Settings is
-stubbed minimally there.)
+This is the one intentional cross-task gap. Do NOT commit yet — the commit happens
+at the end of Task 13 once those types exist and the build is green.
 
 ---
 
@@ -1820,7 +1825,7 @@ public struct RingView: View {
 
     public var body: some View {
         ZStack {
-            Circle().fill(Theme.ringPlate).background(.ultraThinMaterial, in: Circle())
+            Circle().fill(Color.black.opacity(0.55)).background(.ultraThinMaterial, in: Circle())
             Text("Control Ring").foregroundStyle(.white).font(.headline)
         }
         .frame(width: RingView.diameter, height: RingView.diameter)
@@ -1886,6 +1891,7 @@ public final class RingWindowController {
     private var panel: RingPanel?
     private var keyMonitor: Any?
     private var clickMonitor: Any?
+    private var localClickMonitor: Any?
     private var previousApp: NSRunningApplication?
 
     public var onOpenSettings: (() -> Void)?
@@ -1947,15 +1953,27 @@ public final class RingWindowController {
             guard let self, self.viewModel.isOpen else { return event }
             return self.handleKey(event) ? nil : event
         }
+        // Clicks in other apps (panel is non-activating): close.
         clickMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             self?.hide()
         }
+        // Clicks inside our panel but outside the ring circle (transparent corners): close.
+        localClickMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self, let panel = self.panel, event.window === panel else { return event }
+            let p = event.locationInWindow // panel/content coords (origin bottom-left)
+            let c = CGPoint(x: panel.frame.width / 2, y: panel.frame.height / 2)
+            let ringRadius = min(panel.frame.width, panel.frame.height) / 2
+            if hypot(p.x - c.x, p.y - c.y) > ringRadius { self.hide(); return nil }
+            return event
+        }
     }
     private func removeMonitors() {
-        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
-        if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
-        keyMonitor = nil; clickMonitor = nil
+        for m in [keyMonitor, clickMonitor, localClickMonitor] {
+            if let m { NSEvent.removeMonitor(m) }
+        }
+        keyMonitor = nil; clickMonitor = nil; localClickMonitor = nil
     }
 
     private func handleKey(_ event: NSEvent) -> Bool {
@@ -2034,9 +2052,10 @@ public struct SlotTile: View {
     let action: Action?
     let selected: Bool
     var size: CGFloat = 58
+    var accent: Color = Theme.accent
 
-    public init(action: Action?, selected: Bool, size: CGFloat = 58) {
-        self.action = action; self.selected = selected; self.size = size
+    public init(action: Action?, selected: Bool, size: CGFloat = 58, accent: Color = Theme.accent) {
+        self.action = action; self.selected = selected; self.size = size; self.accent = accent
     }
 
     public var body: some View {
@@ -2045,11 +2064,11 @@ public struct SlotTile: View {
         }
         .frame(width: size, height: size)
         .scaleEffect(selected ? 1.15 : 1.0)
-        .shadow(color: selected ? Theme.accent.opacity(0.55) : .clear,
+        .shadow(color: selected ? accent.opacity(0.55) : .clear,
                 radius: selected ? 14 : 0)
         .overlay(
             RoundedRectangle(cornerRadius: size * 0.29)
-                .stroke(Theme.accent, lineWidth: selected ? 2.5 : 0)
+                .stroke(accent, lineWidth: selected ? 2.5 : 0)
         )
         .animation(.spring(response: 0.25, dampingFraction: 0.7), value: selected)
     }
@@ -2072,8 +2091,8 @@ public struct SlotTile: View {
         ZStack {
             RoundedRectangle(cornerRadius: size * 0.29)
                 .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
-                .foregroundStyle(.white.opacity(0.28))
-            Image(systemName: "plus").foregroundStyle(.white.opacity(0.35))
+                .foregroundStyle(.secondary.opacity(0.55))
+            Image(systemName: "plus").foregroundStyle(.secondary)
                 .font(.system(size: size * 0.34, weight: .semibold))
         }
     }
@@ -2089,13 +2108,15 @@ struct OuterRingView: View {
     @ObservedObject var viewModel: RingViewModel
     let center: CGPoint
     let radius: CGFloat
+    let accent: Color
     let onActivate: () -> Void
 
     var body: some View {
         let geo = RingGeometry(slotCount: Mode.slotCount, center: center, radius: radius)
         ForEach(0..<Mode.slotCount, id: \.self) { i in
             SlotTile(action: viewModel.currentMode?.slots[safe: i]?.action,
-                     selected: viewModel.focus == .outer && viewModel.outerIndex == i)
+                     selected: viewModel.focus == .outer && viewModel.outerIndex == i,
+                     accent: accent)
                 .position(geo.position(for: i))
                 .onHover { if $0 { viewModel.selectOuter(i) } }
                 .onTapGesture { viewModel.selectOuter(i); onActivate() }
@@ -2113,6 +2134,7 @@ struct ModeRingView: View {
     @ObservedObject var viewModel: RingViewModel
     let center: CGPoint
     let radius: CGFloat
+    let accent: Color
     let onActivate: () -> Void
 
     var body: some View {
@@ -2136,13 +2158,13 @@ struct ModeRingView: View {
         let tint: Color = isSettings ? Theme.color(.named("gray"))
                                      : Theme.color(viewModel.modes[i].color)
         ZStack {
-            Circle().fill(current ? tint.opacity(0.28) : Color.white.opacity(0.05))
+            Circle().fill(current ? tint.opacity(0.28) : Color.gray.opacity(0.12))
             IconView(spec: icon)
-                .foregroundStyle(current ? tint : .white.opacity(0.8))
+                .foregroundStyle(current ? tint : .primary.opacity(0.8))
                 .padding(10)
         }
         .frame(width: 40, height: 40)
-        .overlay(Circle().stroke(Theme.accent, lineWidth: selected ? 2 : 0))
+        .overlay(Circle().stroke(accent, lineWidth: selected ? 2 : 0))
         .scaleEffect(selected ? 1.18 : 1)
         .animation(.spring(response: 0.25, dampingFraction: 0.7), value: selected)
     }
@@ -2157,6 +2179,7 @@ import SwiftUI
 struct CenterHubView: View {
     @ObservedObject var viewModel: RingViewModel
     let radius: CGFloat
+    let accent: Color
     let onActivate: () -> Void
 
     var body: some View {
@@ -2164,12 +2187,12 @@ struct CenterHubView: View {
         let mode = viewModel.currentMode
         ZStack {
             Circle().fill(
-                RadialGradient(colors: [Theme.accent.opacity(0.35), .clear],
+                RadialGradient(colors: [accent.opacity(0.35), .clear],
                                center: .center, startRadius: 2, endRadius: radius))
-            Circle().stroke(Theme.accent.opacity(selected ? 0.9 : 0.5),
+            Circle().stroke(accent.opacity(selected ? 0.9 : 0.5),
                             lineWidth: selected ? 3 : 1.5)
             IconView(spec: mode?.icon ?? .glyph("apps-grid"))
-                .foregroundStyle(Theme.accent)
+                .foregroundStyle(accent)
                 .frame(width: radius * 0.8, height: radius * 0.8)
         }
         .frame(width: radius * 2, height: radius * 2)
@@ -2189,6 +2212,7 @@ import SwiftUI
 struct RingBezelCanvas: View {
     let bezelRadius: CGFloat
     let innerGlowRadius: CGFloat
+    let accent: Color
 
     var body: some View {
         Canvas { ctx, size in
@@ -2197,10 +2221,10 @@ struct RingBezelCanvas: View {
             func ring(_ r: CGFloat) -> Path {
                 Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2))
             }
-            ctx.stroke(ring(bezelRadius), with: .color(.white.opacity(0.14)), lineWidth: 2)
-            ctx.stroke(ring(bezelRadius - 10), with: .color(.white.opacity(0.06)), lineWidth: 1)
+            ctx.stroke(ring(bezelRadius), with: .color(.gray.opacity(0.35)), lineWidth: 2)
+            ctx.stroke(ring(bezelRadius - 10), with: .color(.gray.opacity(0.18)), lineWidth: 1)
             ctx.stroke(ring(innerGlowRadius),
-                       with: .color(Theme.accent.opacity(0.25)), lineWidth: 1.5)
+                       with: .color(accent.opacity(0.25)), lineWidth: 1.5)
 
             // tick marks around the bezel
             let ticks = 120
@@ -2211,7 +2235,7 @@ struct RingBezelCanvas: View {
                 var p = Path()
                 p.move(to: CGPoint(x: c.x + outer * cos(a), y: c.y + outer * sin(a)))
                 p.addLine(to: CGPoint(x: c.x + inner * cos(a), y: c.y + inner * sin(a)))
-                ctx.stroke(p, with: .color(.white.opacity(i % 10 == 0 ? 0.22 : 0.10)),
+                ctx.stroke(p, with: .color(.gray.opacity(i % 10 == 0 ? 0.5 : 0.28)),
                            lineWidth: 1)
             }
         }
@@ -2227,6 +2251,7 @@ import SwiftUI
 
 public struct RingView: View {
     @ObservedObject var viewModel: RingViewModel
+    @Environment(\.colorScheme) private var scheme
     let onActivate: () -> Void
 
     public init(viewModel: RingViewModel, onActivate: @escaping () -> Void) {
@@ -2242,19 +2267,21 @@ public struct RingView: View {
     private static let centerHubRadius: CGFloat = 62
 
     public var body: some View {
+        let accent = Theme.accent(for: viewModel.currentMode)
         ZStack {
             Circle()
-                .fill(Theme.ringPlate)
+                .fill(Theme.ringPlate(scheme))
                 .background(.ultraThinMaterial, in: Circle())
                 .frame(width: Self.bezelRadius * 2, height: Self.bezelRadius * 2)
 
-            RingBezelCanvas(bezelRadius: Self.bezelRadius, innerGlowRadius: Self.innerRadius + 42)
+            RingBezelCanvas(bezelRadius: Self.bezelRadius,
+                            innerGlowRadius: Self.innerRadius + 42, accent: accent)
             OuterRingView(viewModel: viewModel, center: Self.center,
-                          radius: Self.outerRadius, onActivate: onActivate)
+                          radius: Self.outerRadius, accent: accent, onActivate: onActivate)
             ModeRingView(viewModel: viewModel, center: Self.center,
-                         radius: Self.innerRadius, onActivate: onActivate)
+                         radius: Self.innerRadius, accent: accent, onActivate: onActivate)
             CenterHubView(viewModel: viewModel, radius: Self.centerHubRadius,
-                          onActivate: onActivate)
+                          accent: accent, onActivate: onActivate)
                 .position(Self.center)
         }
         .frame(width: Self.diameter, height: Self.diameter)
@@ -2310,6 +2337,7 @@ action inspector (DRY).
 
 ```swift
 import SwiftUI
+import AppKit
 
 public struct PaletteRow: View {
     @Binding var color: ColorSpec
@@ -2323,11 +2351,27 @@ public struct PaletteRow: View {
                     .overlay(Circle().stroke(Color.primary, lineWidth: isSelected(key) ? 2 : 0))
                     .onTapGesture { color = .named(key) }
             }
+            // Custom color (writes ColorSpec.rgba)
+            ColorPicker("", selection: customBinding, supportsOpacity: true)
+                .labelsHidden()
+                .frame(width: 22, height: 22)
         }
     }
     private func isSelected(_ k: String) -> Bool {
         if case .named(let n) = color { return n == k }
         return false
+    }
+    private var customBinding: Binding<Color> {
+        Binding(get: { Theme.color(color) }, set: { color = ColorSpec.from($0) })
+    }
+}
+
+extension ColorSpec {
+    /// Bridges a SwiftUI Color into an sRGB `.rgba` ColorSpec.
+    static func from(_ color: Color) -> ColorSpec {
+        let ns = NSColor(color).usingColorSpace(.sRGB) ?? NSColor.white
+        return .rgba(Double(ns.redComponent), Double(ns.greenComponent),
+                     Double(ns.blueComponent), Double(ns.alphaComponent))
     }
 }
 
@@ -2486,8 +2530,16 @@ struct SlotListView: View {
                 ForEach(mode.slots) { slot in
                     row(slot).tag(slot.index)
                 }
+                .onMove(perform: moveSlots)
             }
         }
+    }
+
+    /// Reorder actions across the fixed 8 slots, keeping indices 0..7 stable.
+    private func moveSlots(_ offsets: IndexSet, _ destination: Int) {
+        var actions = mode.slots.map { $0.action }
+        actions.move(fromOffsets: offsets, toOffset: destination)
+        mode.slots = actions.enumerated().map { Slot(index: $0.offset, action: $0.element) }
     }
 
     private func row(_ slot: Slot) -> some View {
@@ -2632,6 +2684,7 @@ import SwiftUI
 
 struct SettingsBottomBar: View {
     @ObservedObject var store: ConfigStore
+    @State private var confirmingRestore = false
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "keyboard")
@@ -2639,9 +2692,16 @@ struct SettingsBottomBar: View {
                 .foregroundStyle(.secondary)
             Spacer()
             Button("Reveal Config") { store.revealInFinder() }
-            Button("Restore Defaults") { store.restoreDefaults() }
+            Button("Restore Defaults") { confirmingRestore = true }
         }
         .padding(12)
+        .confirmationDialog("Restore default configuration?",
+                            isPresented: $confirmingRestore, titleVisibility: .visible) {
+            Button("Restore Defaults", role: .destructive) { store.restoreDefaults() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This overwrites your current modes and slots.")
+        }
     }
 }
 ```
