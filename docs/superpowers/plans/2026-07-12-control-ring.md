@@ -1059,6 +1059,13 @@ final class RingViewModelTests: XCTestCase {
         XCTAssertEqual(m.activate(), .openSettings)
     }
 
+    func test_activate_inner_addMode_item_returns_addMode() {
+        let m = vm()
+        m.focus = .inner
+        m.innerIndex = m.addModeInnerIndex // the "+" item, just before Settings
+        XCTAssertEqual(m.activate(), .addMode)
+    }
+
     func test_activate_center_opens_settings() {
         let m = vm()
         m.focus = .center
@@ -1081,6 +1088,7 @@ import Combine
 public enum ActivationIntent: Equatable {
     case runAction(Action)
     case switchMode(Int)
+    case addMode
     case openSettings
     case none
 }
@@ -1097,6 +1105,7 @@ public final class RingViewModel: ObservableObject {
     @Published public var outerIndex = 0
     @Published public var innerIndex = 0
     @Published public var currentModeIndex = 0
+    @Published public var transientMessage: String?
 
     public init(store: ConfigStore) {
         self.store = store
@@ -1112,9 +1121,10 @@ public final class RingViewModel: ObservableObject {
         guard modes.indices.contains(currentModeIndex) else { return nil }
         return modes[currentModeIndex]
     }
-    /// Inner ring = one item per mode + a trailing Settings item.
-    public var innerItemCount: Int { modes.count + 1 }
-    public var settingsInnerIndex: Int { modes.count }
+    /// Inner ring = one item per mode, then an "add mode (+)" item, then Settings.
+    public var innerItemCount: Int { modes.count + 2 }
+    public var addModeInnerIndex: Int { modes.count }
+    public var settingsInnerIndex: Int { modes.count + 1 }
 
     public func moveSelection(by delta: Int) {
         switch focus {
@@ -1151,6 +1161,7 @@ public final class RingViewModel: ObservableObject {
             return .runAction(action)
         case .inner:
             if innerIndex == settingsInnerIndex { return .openSettings }
+            if innerIndex == addModeInnerIndex { return .addMode }
             currentModeIndex = innerIndex
             outerIndex = 0
             return .switchMode(innerIndex)
@@ -1883,7 +1894,7 @@ import AppKit
 import SwiftUI
 
 @MainActor
-public final class RingWindowController {
+public final class RingWindowController: NSObject, NSWindowDelegate {
     private let store: ConfigStore
     public let viewModel: RingViewModel
     private let runner = ActionRunner()
@@ -1899,6 +1910,7 @@ public final class RingWindowController {
     public init(store: ConfigStore) {
         self.store = store
         self.viewModel = RingViewModel(store: store)
+        super.init()
     }
 
     public func toggle() { viewModel.isOpen ? hide() : show() }
@@ -1915,6 +1927,7 @@ public final class RingWindowController {
         host.frame = NSRect(origin: .zero, size: panel.frame.size)
         panel.contentView = host
         centerOnActiveScreen(panel)
+        panel.delegate = self
         panel.makeKeyAndOrderFront(nil)
         self.panel = panel
 
@@ -1924,25 +1937,50 @@ public final class RingWindowController {
 
     public func hide() {
         viewModel.isOpen = false
+        viewModel.transientMessage = nil
         removeMonitors()
+        panel?.delegate = nil
         panel?.orderOut(nil)
         panel = nil
+    }
+
+    /// Spec: close when the ring loses key focus (e.g. user switches windows).
+    public func windowDidResignKey(_ notification: Notification) {
+        if viewModel.isOpen { hide() }
     }
 
     private func handleActivation() {
         switch viewModel.activate() {
         case .runAction(let action):
-            let prev = previousApp
-            hide()
-            prev?.activate()
-            _ = runner.run(action)
+            if let error = runner.run(action) {
+                NSLog("ControlRing: \(error)")
+                viewModel.transientMessage = error
+                scheduleClearMessage()   // ring stays open to show the error
+            } else {
+                let prev = previousApp
+                hide()
+                prev?.activate()
+            }
         case .switchMode:
             break // ring stays open
+        case .addMode:
+            store.config.modes.append(
+                Mode(name: "New Mode", icon: .glyph("apps-grid"),
+                     color: .named("gray"), actions: []))
+            viewModel.currentModeIndex = store.config.modes.count - 1
+            hide()
+            onOpenSettings?()
         case .openSettings:
             hide()
             onOpenSettings?()
         case .none:
             break
+        }
+    }
+
+    private func scheduleClearMessage() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { [weak self] in
+            self?.viewModel.transientMessage = nil
         }
     }
 
@@ -2152,16 +2190,28 @@ struct ModeRingView: View {
 
     @ViewBuilder private func chip(for i: Int) -> some View {
         let isSettings = i == viewModel.settingsInnerIndex
+        let isAddMode = i == viewModel.addModeInnerIndex
         let selected = viewModel.focus == .inner && viewModel.innerIndex == i
-        let current = !isSettings && viewModel.currentModeIndex == i
-        let icon: IconSpec = isSettings ? .glyph("gear") : viewModel.modes[i].icon
-        let tint: Color = isSettings ? Theme.color(.named("gray"))
-                                     : Theme.color(viewModel.modes[i].color)
-        ZStack {
-            Circle().fill(current ? tint.opacity(0.28) : Color.gray.opacity(0.12))
-            IconView(spec: icon)
-                .foregroundStyle(current ? tint : .primary.opacity(0.8))
-                .padding(10)
+        let current = !isSettings && !isAddMode && viewModel.currentModeIndex == i
+
+        Group {
+            if isAddMode {
+                ZStack {
+                    Circle().strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                        .foregroundStyle(.secondary.opacity(0.6))
+                    Image(systemName: "plus").foregroundStyle(.secondary)
+                }
+            } else {
+                let icon: IconSpec = isSettings ? .glyph("gear") : viewModel.modes[i].icon
+                let tint: Color = isSettings ? Theme.color(.named("gray"))
+                                             : Theme.color(viewModel.modes[i].color)
+                ZStack {
+                    Circle().fill(current ? tint.opacity(0.28) : Color.gray.opacity(0.12))
+                    IconView(spec: icon)
+                        .foregroundStyle(current ? tint : .primary.opacity(0.8))
+                        .padding(10)
+                }
+            }
         }
         .frame(width: 40, height: 40)
         .overlay(Circle().stroke(accent, lineWidth: selected ? 2 : 0))
@@ -2283,7 +2333,18 @@ public struct RingView: View {
             CenterHubView(viewModel: viewModel, radius: Self.centerHubRadius,
                           accent: accent, onActivate: onActivate)
                 .position(Self.center)
+
+            if let msg = viewModel.transientMessage {
+                Text(msg)
+                    .font(.callout).foregroundStyle(.white).lineLimit(2)
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(Capsule().fill(Color.red.opacity(0.85)))
+                    .frame(maxWidth: Self.diameter * 0.7)
+                    .position(x: Self.center.x, y: Self.diameter - 64)
+                    .transition(.opacity)
+            }
         }
+        .animation(.easeInOut(duration: 0.2), value: viewModel.transientMessage)
         .frame(width: Self.diameter, height: Self.diameter)
         .scaleEffect(viewModel.isOpen ? 1 : 0.86)
         .opacity(viewModel.isOpen ? 1 : 0)
