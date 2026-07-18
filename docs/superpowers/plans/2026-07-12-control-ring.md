@@ -59,9 +59,41 @@ Tests/ControlRingTests/
   RingViewModelTests.swift
   ActionRunnerTests.swift
   HotKeyCarbonTests.swift
+  main.swift                               # test registry: runs every test method
+Tests/XCTestShim/
+  XCTest.swift                             # minimal XCTest shim (CLT has no XCTest)
 ```
 
 **Palette (single source of truth in `Theme`):** `amber, red, orange, yellow, green, teal, blue, indigo, purple, pink, brown, gray`. `ColorSpec.named(key)` resolves through this palette; ring accent = active mode color; base surfaces adapt to light/dark.
+
+---
+
+## Testing Convention (READ FIRST — differs from stock SwiftPM)
+
+**Command Line Tools ship no `XCTest` and no swift-testing `Testing` module, so
+`swift test` cannot run in this environment** (verified). Instead:
+
+- `ControlRingTests` is an **`executableTarget`** (not a `testTarget`) containing a
+  `main.swift` **registry** that instantiates each test class and calls each test
+  method, then prints a summary and `exit(1)` if any check failed.
+- A tiny hand-rolled **`XCTest` shim** target (`Tests/XCTestShim/XCTest.swift`)
+  provides `XCTestCase`, `XCTAssertEqual` (incl. the `accuracy:` overload),
+  `XCTAssertTrue/False/Nil`, and `XCTFail`. This lets every test file keep its
+  `import XCTest` and `XCTAssert…` calls **verbatim** — write tests exactly as the
+  task blocks show them.
+- The `ControlRingKit` target is compiled with `-enable-testing` so
+  `@testable import ControlRingKit` works under plain `swift build`.
+- **Run tests** by building and executing the binary directly (clean exit code):
+  `swift build 2>&1 | tail -5 && ./.build/debug/ControlRingTests`
+  Expected on success: a line `ControlRingTests — checks: N, failures: 0` then
+  `ALL TESTS PASSED`, exit 0. Any failure prints `FAIL <file>:<line> …` and exits 1.
+- **Every task that adds test methods must also update
+  `Tests/ControlRingTests/main.swift`** so the new methods actually execute. The
+  cumulative registry (with a labeled block per task) is in the **Appendix: Test
+  Registry** at the end of this plan — after adding a task's test file, sync the
+  `MainActor.assumeIsolated { … }` block up to and including that task's block
+  (omit blocks for tasks you haven't implemented yet, since their symbols don't
+  exist).
 
 ---
 
@@ -71,10 +103,15 @@ Tests/ControlRingTests/
 - Create: `Package.swift`
 - Create: `Sources/ControlRing/main.swift`
 - Create: `Sources/ControlRingKit/App/ControlRingMain.swift`
+- Create: `Tests/XCTestShim/XCTest.swift` (minimal XCTest shim)
+- Create: `Tests/ControlRingTests/main.swift` (test registry)
 - Create: `scripts/run.sh`, `scripts/build-app.sh` (build-app.sh fully written in Task 16)
-- Test: `Tests/ControlRingTests/CoreSpecsCodableTests.swift` (starts as a harness smoke test)
+- Test: `Tests/ControlRingTests/CoreSpecsCodableTests.swift` (starts as a smoke test)
 
-- [ ] **Step 1: Write the failing test**
+Read the **Testing Convention** section above before starting — this project cannot
+use `swift test`.
+
+- [ ] **Step 1: Write the smoke test**
 
 `Tests/ControlRingTests/CoreSpecsCodableTests.swift`:
 ```swift
@@ -99,20 +136,114 @@ let package = Package(
     name: "ControlRing",
     platforms: [.macOS(.v13)],
     targets: [
-        .target(name: "ControlRingKit", path: "Sources/ControlRingKit"),
+        .target(
+            name: "ControlRingKit",
+            path: "Sources/ControlRingKit",
+            swiftSettings: [.unsafeFlags(["-enable-testing"])]  // enables @testable
+        ),
         .executableTarget(
             name: "ControlRing",
             dependencies: ["ControlRingKit"],
             path: "Sources/ControlRing"
         ),
-        .testTarget(
+        // Test runner is a plain executable (CLT has no XCTest/Testing module).
+        .target(name: "XCTest", path: "Tests/XCTestShim"),
+        .executableTarget(
             name: "ControlRingTests",
-            dependencies: ["ControlRingKit"],
+            dependencies: ["ControlRingKit", "XCTest"],
             path: "Tests/ControlRingTests"
         ),
     ]
 )
 ```
+
+`Tests/XCTestShim/XCTest.swift` (hand-rolled; covers exactly the API the tests use):
+```swift
+import Foundation
+
+open class XCTestCase {
+    public init() {}
+}
+
+public enum XCTestRegistry {
+    public static var checks = 0
+    public static var failures: [String] = []
+    public static func record(_ message: String, _ file: StaticString, _ line: UInt) {
+        failures.append("\(file):\(line) \(message)")
+    }
+}
+
+public func XCTFail(_ message: String = "", file: StaticString = #file, line: UInt = #line) {
+    XCTestRegistry.checks += 1
+    XCTestRegistry.record("XCTFail: \(message)", file, line)
+}
+
+public func XCTAssertTrue(_ expression: @autoclosure () throws -> Bool, _ message: String = "",
+                          file: StaticString = #file, line: UInt = #line) {
+    XCTestRegistry.checks += 1
+    do { if try !expression() { XCTestRegistry.record("XCTAssertTrue failed. \(message)", file, line) } }
+    catch { XCTestRegistry.record("threw \(error). \(message)", file, line) }
+}
+
+public func XCTAssertFalse(_ expression: @autoclosure () throws -> Bool, _ message: String = "",
+                           file: StaticString = #file, line: UInt = #line) {
+    XCTestRegistry.checks += 1
+    do { if try expression() { XCTestRegistry.record("XCTAssertFalse failed. \(message)", file, line) } }
+    catch { XCTestRegistry.record("threw \(error). \(message)", file, line) }
+}
+
+public func XCTAssertNil(_ expression: @autoclosure () throws -> Any?, _ message: String = "",
+                         file: StaticString = #file, line: UInt = #line) {
+    XCTestRegistry.checks += 1
+    do { if let v = try expression() { XCTestRegistry.record("XCTAssertNil: got \(v). \(message)", file, line) } }
+    catch { XCTestRegistry.record("threw \(error). \(message)", file, line) }
+}
+
+public func XCTAssertEqual<T: Equatable>(_ a: @autoclosure () throws -> T,
+                                         _ b: @autoclosure () throws -> T, _ message: String = "",
+                                         file: StaticString = #file, line: UInt = #line) {
+    XCTestRegistry.checks += 1
+    do { let av = try a(); let bv = try b()
+         if av != bv { XCTestRegistry.record("XCTAssertEqual: \(av) != \(bv). \(message)", file, line) } }
+    catch { XCTestRegistry.record("threw \(error). \(message)", file, line) }
+}
+
+public func XCTAssertEqual<T: FloatingPoint>(_ a: @autoclosure () throws -> T,
+                                             _ b: @autoclosure () throws -> T, accuracy: T,
+                                             _ message: String = "",
+                                             file: StaticString = #file, line: UInt = #line) {
+    XCTestRegistry.checks += 1
+    do { let av = try a(); let bv = try b()
+         if abs(av - bv) > accuracy {
+             XCTestRegistry.record("XCTAssertEqual(acc): \(av) != \(bv). \(message)", file, line) } }
+    catch { XCTestRegistry.record("threw \(error). \(message)", file, line) }
+}
+```
+
+`Tests/ControlRingTests/main.swift` (the registry — grows one block per task):
+```swift
+import Foundation
+import XCTest
+
+func run(_ name: String, _ body: () throws -> Void) {
+    do { try body() } catch { XCTestRegistry.record("\(name) threw \(error)", #file, #line) }
+}
+
+MainActor.assumeIsolated {
+    // Task 1
+    let coreSpecs = CoreSpecsCodableTests()
+    run("CoreSpecs.test_kit_links", coreSpecs.test_kit_links)
+}
+
+print("ControlRingTests — checks: \(XCTestRegistry.checks), failures: \(XCTestRegistry.failures.count)")
+for f in XCTestRegistry.failures { print("  FAIL \(f)") }
+if XCTestRegistry.failures.isEmpty { print("ALL TESTS PASSED") }
+exit(XCTestRegistry.failures.isEmpty ? 0 : 1)
+```
+
+> As later tasks add test classes/methods, insert their `run(...)` lines inside the
+> `MainActor.assumeIsolated { … }` block (before the summary print). Keep the summary
+> print + `exit` as the last statements.
 
 `Sources/ControlRingKit/App/ControlRingMain.swift`:
 ```swift
@@ -153,10 +284,10 @@ swift build
 exec ./.build/debug/ControlRing
 ```
 
-- [ ] **Step 3: Run the test to verify it passes**
+- [ ] **Step 3: Build and run the test binary to verify it passes**
 
-Run: `chmod +x scripts/*.sh && swift test 2>&1 | tail -20`
-Expected: builds, `test_kit_links` PASSES.
+Run: `chmod +x scripts/*.sh && swift build 2>&1 | tail -5 && ./.build/debug/ControlRingTests`
+Expected: builds; prints `ControlRingTests — checks: 1, failures: 0` and `ALL TESTS PASSED`; exit 0.
 
 - [ ] **Step 4: Commit**
 
@@ -219,7 +350,7 @@ final class CoreSpecsCodableTests: XCTestCase {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `swift test 2>&1 | tail -20`
+Run: `swift build 2>&1 | tail -5 && ./.build/debug/ControlRingTests`
 Expected: FAIL — `ColorSpec` / `IconSpec` / `HotKeySpec` undefined.
 
 - [ ] **Step 3: Implement `CoreSpecs.swift`**
@@ -309,7 +440,7 @@ public struct HotKeySpec: Codable, Equatable, Hashable {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `swift test 2>&1 | tail -20`
+Run: `swift build 2>&1 | tail -5 && ./.build/debug/ControlRingTests`
 Expected: all CoreSpecs tests PASS.
 
 - [ ] **Step 5: Commit**
@@ -364,7 +495,7 @@ final class ConfigCodableTests: XCTestCase {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `swift test 2>&1 | tail -20`
+Run: `swift build 2>&1 | tail -5 && ./.build/debug/ControlRingTests`
 Expected: FAIL — `Action` / `Presentation` undefined.
 
 - [ ] **Step 3: Implement `Action.swift`**
@@ -441,7 +572,7 @@ public struct Action: Codable, Equatable, Identifiable, Hashable {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `swift test 2>&1 | tail -20`
+Run: `swift build 2>&1 | tail -5 && ./.build/debug/ControlRingTests`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -495,7 +626,7 @@ Slots are a **fixed length of 8** (`Mode.slotCount`). Helpers guarantee this.
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `swift test 2>&1 | tail -20`
+Run: `swift build 2>&1 | tail -5 && ./.build/debug/ControlRingTests`
 Expected: FAIL — `Mode`/`Slot`/`Settings`/`Config` undefined.
 
 - [ ] **Step 3: Implement `Mode.swift`**
@@ -597,7 +728,7 @@ public struct Config: Codable, Equatable, Hashable {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `swift test 2>&1 | tail -20`
+Run: `swift build 2>&1 | tail -5 && ./.build/debug/ControlRingTests`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -646,7 +777,7 @@ final class DefaultConfigTests: XCTestCase {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `swift test 2>&1 | tail -20`
+Run: `swift build 2>&1 | tail -5 && ./.build/debug/ControlRingTests`
 Expected: FAIL — `DefaultConfig` undefined.
 
 - [ ] **Step 3: Implement `DefaultConfig.swift`**
@@ -717,7 +848,7 @@ public enum DefaultConfig {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `swift test 2>&1 | tail -20`
+Run: `swift build 2>&1 | tail -5 && ./.build/debug/ControlRingTests`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -795,7 +926,7 @@ final class ConfigStoreTests: XCTestCase {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `swift test 2>&1 | tail -20`
+Run: `swift build 2>&1 | tail -5 && ./.build/debug/ControlRingTests`
 Expected: FAIL — `ConfigStore` undefined.
 
 - [ ] **Step 3: Implement `ConfigStore.swift`**
@@ -878,7 +1009,7 @@ enum NSWorkspaceReveal {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `swift test 2>&1 | tail -20`
+Run: `swift build 2>&1 | tail -5 && ./.build/debug/ControlRingTests`
 Expected: PASS (all 4 ConfigStore tests).
 
 - [ ] **Step 5: Commit**
@@ -930,7 +1061,7 @@ final class RingGeometryTests: XCTestCase {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `swift test 2>&1 | tail -20`
+Run: `swift build 2>&1 | tail -5 && ./.build/debug/ControlRingTests`
 Expected: FAIL — `RingGeometry` undefined.
 
 - [ ] **Step 3: Implement `RingGeometry.swift`**
@@ -965,7 +1096,7 @@ public struct RingGeometry: Equatable {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `swift test 2>&1 | tail -20`
+Run: `swift build 2>&1 | tail -5 && ./.build/debug/ControlRingTests`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -1076,7 +1207,7 @@ final class RingViewModelTests: XCTestCase {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `swift test 2>&1 | tail -20`
+Run: `swift build 2>&1 | tail -5 && ./.build/debug/ControlRingTests`
 Expected: FAIL — `RingViewModel` undefined.
 
 - [ ] **Step 3: Implement `RingViewModel.swift`**
@@ -1195,7 +1326,7 @@ extension Array {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `swift test 2>&1 | tail -20`
+Run: `swift build 2>&1 | tail -5 && ./.build/debug/ControlRingTests`
 Expected: all RingViewModel tests PASS.
 
 - [ ] **Step 5: Commit**
@@ -1271,7 +1402,7 @@ final class ActionRunnerTests: XCTestCase {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `swift test 2>&1 | tail -20`
+Run: `swift build 2>&1 | tail -5 && ./.build/debug/ControlRingTests`
 Expected: FAIL — `LaunchPlan` / `ActionRunner` undefined.
 
 - [ ] **Step 3: Implement `LaunchPlan.swift`**
@@ -1379,7 +1510,7 @@ public struct ActionRunner {
 
 - [ ] **Step 5: Run to verify it passes**
 
-Run: `swift test 2>&1 | tail -20`
+Run: `swift build 2>&1 | tail -5 && ./.build/debug/ControlRingTests`
 Expected: all ActionRunner tests PASS.
 
 - [ ] **Step 6: Commit**
@@ -1436,7 +1567,7 @@ final class HotKeyCarbonTests: XCTestCase {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `swift test 2>&1 | tail -20`
+Run: `swift build 2>&1 | tail -5 && ./.build/debug/ControlRingTests`
 Expected: FAIL — `carbonModifierFlags` undefined.
 
 - [ ] **Step 3: Implement `HotKeySpec+Carbon.swift`**
@@ -1529,7 +1660,7 @@ public final class HotKeyManager {
 
 - [ ] **Step 5: Run to verify it passes**
 
-Run: `swift test 2>&1 | tail -20`
+Run: `swift build 2>&1 | tail -5 && ./.build/debug/ControlRingTests`
 Expected: mapping tests PASS. (Manager compiles; runtime firing verified in Task 16.)
 
 - [ ] **Step 6: Commit**
@@ -2986,7 +3117,7 @@ git add -A && git commit -m "build: assemble and ad-hoc sign ControlRing.app bun
 
 - [ ] **Step 1: Run the full test suite**
 
-Run: `swift test 2>&1 | tail -25`
+Run: `swift build 2>&1 | tail -5 && ./.build/debug/ControlRingTests`
 Expected: all tests pass (CoreSpecs, Config, DefaultConfig, ConfigStore, RingGeometry,
 RingViewModel, ActionRunner, HotKeyCarbon). If any fail, fix before continuing.
 
@@ -3006,10 +3137,12 @@ Run `./scripts/build-app.sh && open build/ControlRing.app`, then verify:
 - [ ] **Step 3: Write `README.md`**
 
 Include: what it is, the hotkey, `scripts/run.sh` (dev), `scripts/build-app.sh`
-(release bundle), `swift test`, config location
+(release bundle), how to run the test suite
+(`swift build && ./.build/debug/ControlRingTests`), config location
 (`~/Library/Application Support/ControlRing/config.json`), and the "no Xcode
-required — Command Line Tools only" note. Document keyboard shortcuts and the
-deferred phases (search, contextual mode).
+required — Command Line Tools only" note (including that `swift test` is
+unavailable under CLT, so tests run via the executable test target). Document
+keyboard shortcuts and the deferred phases (search, contextual mode).
 
 - [ ] **Step 4: Confirm `.gitignore` excludes build artifacts**
 
@@ -3026,7 +3159,8 @@ git add -A && git commit -m "docs: add README and finalize v1 verification"
 
 ## Definition of Done
 
-- `swift test` green; `swift build -c release` clean.
+- Test suite green via `swift build && ./.build/debug/ControlRingTests` (prints
+  `ALL TESTS PASSED`, exit 0); `swift build -c release` clean.
 - `./scripts/build-app.sh` produces a launchable, ad-hoc-signed `ControlRing.app`.
 - ⌘⌥⇧+[ summons an animated radial launcher that launches apps (native icons) and
   scripts, switches modes, is fully keyboard-navigable, and respects macOS theming.
@@ -3044,3 +3178,94 @@ git add -A && git commit -m "docs: add README and finalize v1 verification"
   the build after each UI task and address diagnostics before committing.
 - Do NOT add features from the deferred list (search, contextual auto-open); the
   model already carries their fields for the next phase.
+
+---
+
+## Appendix: Test Registry (`Tests/ControlRingTests/main.swift`)
+
+Each task that adds test methods must keep `main.swift` in sync so the new methods
+actually run. The simplest reliable approach: after adding a task's test file,
+**replace the `MainActor.assumeIsolated { … }` block with the cumulative version
+through your task** (delete the trailing task blocks you haven't reached yet). The
+final, complete listing after Task 10 is below. `@MainActor` test classes
+(`ConfigStoreTests`, `RingViewModelTests`) are safe here because the whole block
+runs inside `MainActor.assumeIsolated`.
+
+```swift
+import Foundation
+import XCTest
+
+func run(_ name: String, _ body: () throws -> Void) {
+    do { try body() } catch { XCTestRegistry.record("\(name) threw \(error)", #file, #line) }
+}
+
+MainActor.assumeIsolated {
+    // Task 2 — CoreSpecsCodableTests
+    let coreSpecs = CoreSpecsCodableTests()
+    run("CoreSpecs.test_kit_links", coreSpecs.test_kit_links)
+    run("CoreSpecs.test_colorSpec_roundTrips_named_and_rgba", coreSpecs.test_colorSpec_roundTrips_named_and_rgba)
+    run("CoreSpecs.test_iconSpec_roundTrips_all_cases", coreSpecs.test_iconSpec_roundTrips_all_cases)
+    run("CoreSpecs.test_hotKeySpec_default_is_cmd_opt_shift_leftBracket", coreSpecs.test_hotKeySpec_default_is_cmd_opt_shift_leftBracket)
+    run("CoreSpecs.test_actionType_and_availability_are_string_codable", coreSpecs.test_actionType_and_availability_are_string_codable)
+
+    // Task 3 & 4 — ConfigCodableTests
+    let configCodable = ConfigCodableTests()
+    run("ConfigCodable.test_action_roundTrips", configCodable.test_action_roundTrips)
+    run("ConfigCodable.test_action_defaults_when_optional_fields_missing", configCodable.test_action_defaults_when_optional_fields_missing)
+    run("ConfigCodable.test_mode_normalizes_to_eight_slots", configCodable.test_mode_normalizes_to_eight_slots)
+    run("ConfigCodable.test_config_roundTrips", configCodable.test_config_roundTrips)
+    run("ConfigCodable.test_mode_defaults_contextual_false_when_missing", configCodable.test_mode_defaults_contextual_false_when_missing)
+
+    // Task 5 — DefaultConfigTests
+    let defaultConfig = DefaultConfigTests()
+    run("DefaultConfig.test_default_has_expected_modes", defaultConfig.test_default_has_expected_modes)
+    run("DefaultConfig.test_apps_mode_seeds_known_apps_in_order", defaultConfig.test_apps_mode_seeds_known_apps_in_order)
+    run("DefaultConfig.test_default_config_is_codable_roundtrip", defaultConfig.test_default_config_is_codable_roundtrip)
+
+    // Task 6 — ConfigStoreTests (@MainActor)
+    let configStore = ConfigStoreTests()
+    run("ConfigStore.test_first_load_writes_defaults", configStore.test_first_load_writes_defaults)
+    run("ConfigStore.test_save_then_load_roundtrips", configStore.test_save_then_load_roundtrips)
+    run("ConfigStore.test_corrupt_file_is_backed_up_and_defaults_loaded", configStore.test_corrupt_file_is_backed_up_and_defaults_loaded)
+    run("ConfigStore.test_restoreDefaults_overwrites", configStore.test_restoreDefaults_overwrites)
+
+    // Task 7 — RingGeometryTests
+    let ringGeometry = RingGeometryTests()
+    run("RingGeometry.test_slot0_is_at_top", ringGeometry.test_slot0_is_at_top)
+    run("RingGeometry.test_indices_go_clockwise", ringGeometry.test_indices_go_clockwise)
+    run("RingGeometry.test_angle_step_is_uniform", ringGeometry.test_angle_step_is_uniform)
+
+    // Task 8 — RingViewModelTests (@MainActor)
+    let ringVM = RingViewModelTests()
+    run("RingVM.test_left_wraps_outer_selection", ringVM.test_left_wraps_outer_selection)
+    run("RingVM.test_right_advances_and_wraps", ringVM.test_right_advances_and_wraps)
+    run("RingVM.test_focus_moves_outer_inner_center_and_back", ringVM.test_focus_moves_outer_inner_center_and_back)
+    run("RingVM.test_activate_filled_outer_slot_returns_runAction", ringVM.test_activate_filled_outer_slot_returns_runAction)
+    run("RingVM.test_activate_empty_outer_slot_returns_none", ringVM.test_activate_empty_outer_slot_returns_none)
+    run("RingVM.test_activate_inner_mode_switches_mode", ringVM.test_activate_inner_mode_switches_mode)
+    run("RingVM.test_activate_inner_settings_item_returns_openSettings", ringVM.test_activate_inner_settings_item_returns_openSettings)
+    run("RingVM.test_activate_inner_addMode_item_returns_addMode", ringVM.test_activate_inner_addMode_item_returns_addMode)
+    run("RingVM.test_activate_center_opens_settings", ringVM.test_activate_center_opens_settings)
+
+    // Task 9 — ActionRunnerTests
+    let actionRunner = ActionRunnerTests()
+    run("ActionRunner.test_application_plan_uses_resolved_url_and_arguments", actionRunner.test_application_plan_uses_resolved_url_and_arguments)
+    run("ActionRunner.test_application_plan_fails_when_unresolved", actionRunner.test_application_plan_fails_when_unresolved)
+    run("ActionRunner.test_script_plan_wraps_in_sh_lc", actionRunner.test_script_plan_wraps_in_sh_lc)
+    run("ActionRunner.test_script_plan_fails_on_empty_command", actionRunner.test_script_plan_fails_on_empty_command)
+    run("ActionRunner.test_url_plan", actionRunner.test_url_plan)
+    run("ActionRunner.test_folder_plan", actionRunner.test_folder_plan)
+
+    // Task 10 — HotKeyCarbonTests
+    let hotKey = HotKeyCarbonTests()
+    run("HotKey.test_modifier_mapping_combines_flags", hotKey.test_modifier_mapping_combines_flags)
+    run("HotKey.test_control_flag_maps", hotKey.test_control_flag_maps)
+    run("HotKey.test_unknown_modifier_ignored", hotKey.test_unknown_modifier_ignored)
+    run("HotKey.test_display_string", hotKey.test_display_string)
+}
+
+print("ControlRingTests — checks: \(XCTestRegistry.checks), failures: \(XCTestRegistry.failures.count)")
+for f in XCTestRegistry.failures { print("  FAIL \(f)") }
+if XCTestRegistry.failures.isEmpty { print("ALL TESTS PASSED") }
+exit(XCTestRegistry.failures.isEmpty ? 0 : 1)
+```
