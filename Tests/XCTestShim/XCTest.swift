@@ -1,4 +1,4 @@
-import Foundation
+@_exported import Foundation
 
 open class XCTestCase {
     public init() {}
