@@ -18,6 +18,9 @@ MainActor.assumeIsolated {
     let configCodable = ConfigCodableTests()
     run("ConfigCodable.test_action_roundTrips", configCodable.test_action_roundTrips)
     run("ConfigCodable.test_action_defaults_when_optional_fields_missing", configCodable.test_action_defaults_when_optional_fields_missing)
+    run("ConfigCodable.test_mode_normalizes_to_eight_slots", configCodable.test_mode_normalizes_to_eight_slots)
+    run("ConfigCodable.test_config_roundTrips", configCodable.test_config_roundTrips)
+    run("ConfigCodable.test_mode_defaults_contextual_false_when_missing", configCodable.test_mode_defaults_contextual_false_when_missing)
 }
 
 print("ControlRingTests — checks: \(XCTestRegistry.checks), failures: \(XCTestRegistry.failures.count)")
