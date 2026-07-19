@@ -14,11 +14,7 @@ public final class SettingsWindowController {
         window?.makeKeyAndOrderFront(nil)
     }
 
-    // Replaced in Task 15 with SettingsView(store:).
-    func rootView() -> AnyView {
-        AnyView(Text("Settings — coming soon")
-            .frame(minWidth: 900, minHeight: 600))
-    }
+    func rootView() -> AnyView { AnyView(SettingsView(store: store)) }
 
     private func makeWindow() -> NSWindow {
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 980, height: 640),
