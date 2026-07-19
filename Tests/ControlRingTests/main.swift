@@ -52,6 +52,15 @@ MainActor.assumeIsolated {
     run("RingVM.test_activate_inner_settings_item_returns_openSettings", ringVM.test_activate_inner_settings_item_returns_openSettings)
     run("RingVM.test_activate_inner_addMode_item_returns_addMode", ringVM.test_activate_inner_addMode_item_returns_addMode)
     run("RingVM.test_activate_center_opens_settings", ringVM.test_activate_center_opens_settings)
+
+    // Task 9 — ActionRunnerTests
+    let actionRunner = ActionRunnerTests()
+    run("ActionRunner.test_application_plan_uses_resolved_url_and_arguments", actionRunner.test_application_plan_uses_resolved_url_and_arguments)
+    run("ActionRunner.test_application_plan_fails_when_unresolved", actionRunner.test_application_plan_fails_when_unresolved)
+    run("ActionRunner.test_script_plan_wraps_in_sh_lc", actionRunner.test_script_plan_wraps_in_sh_lc)
+    run("ActionRunner.test_script_plan_fails_on_empty_command", actionRunner.test_script_plan_fails_on_empty_command)
+    run("ActionRunner.test_url_plan", actionRunner.test_url_plan)
+    run("ActionRunner.test_folder_plan", actionRunner.test_folder_plan)
 }
 
 print("ControlRingTests — checks: \(XCTestRegistry.checks), failures: \(XCTestRegistry.failures.count)")
