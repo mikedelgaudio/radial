@@ -1,3 +1,5 @@
 import ControlRingKit
 
-ControlRingMain.run()
+MainActor.assumeIsolated {
+    ControlRingMain.run()
+}

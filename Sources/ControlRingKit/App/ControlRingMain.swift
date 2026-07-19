@@ -5,6 +5,7 @@ public enum ControlRingKit {
 }
 
 public enum ControlRingMain {
+    @MainActor
     public static func run() {
         let app = NSApplication.shared
         let delegate = AppDelegate()
@@ -13,5 +14,3 @@ public enum ControlRingMain {
         app.run()
     }
 }
-
-final class AppDelegate: NSObject, NSApplicationDelegate {}
