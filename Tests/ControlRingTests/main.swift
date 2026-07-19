@@ -40,6 +40,18 @@ MainActor.assumeIsolated {
     run("RingGeometry.test_slot0_is_at_top", ringGeometry.test_slot0_is_at_top)
     run("RingGeometry.test_indices_go_clockwise", ringGeometry.test_indices_go_clockwise)
     run("RingGeometry.test_angle_step_is_uniform", ringGeometry.test_angle_step_is_uniform)
+
+    // Task 8 — RingViewModelTests (@MainActor)
+    let ringVM = RingViewModelTests()
+    run("RingVM.test_left_wraps_outer_selection", ringVM.test_left_wraps_outer_selection)
+    run("RingVM.test_right_advances_and_wraps", ringVM.test_right_advances_and_wraps)
+    run("RingVM.test_focus_moves_outer_inner_center_and_back", ringVM.test_focus_moves_outer_inner_center_and_back)
+    run("RingVM.test_activate_filled_outer_slot_returns_runAction", ringVM.test_activate_filled_outer_slot_returns_runAction)
+    run("RingVM.test_activate_empty_outer_slot_returns_none", ringVM.test_activate_empty_outer_slot_returns_none)
+    run("RingVM.test_activate_inner_mode_switches_mode", ringVM.test_activate_inner_mode_switches_mode)
+    run("RingVM.test_activate_inner_settings_item_returns_openSettings", ringVM.test_activate_inner_settings_item_returns_openSettings)
+    run("RingVM.test_activate_inner_addMode_item_returns_addMode", ringVM.test_activate_inner_addMode_item_returns_addMode)
+    run("RingVM.test_activate_center_opens_settings", ringVM.test_activate_center_opens_settings)
 }
 
 print("ControlRingTests — checks: \(XCTestRegistry.checks), failures: \(XCTestRegistry.failures.count)")
