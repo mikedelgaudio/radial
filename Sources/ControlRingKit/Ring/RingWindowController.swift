@@ -80,6 +80,7 @@ public final class RingWindowController: NSObject, NSWindowDelegate {
                 Mode(name: "New Mode", icon: .glyph("apps-grid"),
                      color: .named("gray"), actions: []))
             viewModel.currentModeIndex = store.config.modes.count - 1
+            store.save()
             hide()
             onOpenSettings?()
         case .openSettings:

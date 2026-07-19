@@ -28,15 +28,23 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         item.button?.image = NSImage(systemSymbolName: "circle.grid.cross.fill",
                                      accessibilityDescription: "Control Ring")
         let menu = NSMenu()
-        menu.addItem(withTitle: "Summon Ring  (\(store.config.hotkey.displayString))",
-                     action: #selector(summon), keyEquivalent: "")
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
-        menu.addItem(withTitle: "Reveal Config", action: #selector(revealConfig), keyEquivalent: "")
-        menu.addItem(withTitle: "Restore Defaults", action: #selector(restoreDefaults), keyEquivalent: "")
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit Control Ring", action: #selector(NSApp.terminate(_:)), keyEquivalent: "q")
-        menu.items.forEach { $0.target = self }
+        // Items targeting the delegate must have their target set explicitly. The Quit
+        // item deliberately keeps a nil target so `terminate:` routes up the responder
+        // chain to NSApp (AppDelegate doesn't implement terminate:); forcing self as its
+        // target would leave it disabled by autoenablesItems.
+        for (title, selector, key) in [
+            ("Summon Ring  (\(store.config.hotkey.displayString))", #selector(summon), ""),
+            ("Settings…", #selector(openSettings), ","),
+            ("Reveal Config", #selector(revealConfig), ""),
+            ("Restore Defaults", #selector(restoreDefaults), ""),
+        ] {
+            let menuItem = NSMenuItem(title: title, action: selector, keyEquivalent: key)
+            menuItem.target = self
+            menu.addItem(menuItem)
+            if title.hasPrefix("Summon") || title == "Restore Defaults" { menu.addItem(.separator()) }
+        }
+        menu.addItem(withTitle: "Quit Control Ring",
+                     action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
         self.statusItem = item
     }
