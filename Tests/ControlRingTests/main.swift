@@ -27,6 +27,13 @@ MainActor.assumeIsolated {
     run("DefaultConfig.test_default_has_expected_modes", defaultConfig.test_default_has_expected_modes)
     run("DefaultConfig.test_apps_mode_seeds_known_apps_in_order", defaultConfig.test_apps_mode_seeds_known_apps_in_order)
     run("DefaultConfig.test_default_config_is_codable_roundtrip", defaultConfig.test_default_config_is_codable_roundtrip)
+
+    // Task 6 — ConfigStoreTests (@MainActor)
+    let configStore = ConfigStoreTests()
+    run("ConfigStore.test_first_load_writes_defaults", configStore.test_first_load_writes_defaults)
+    run("ConfigStore.test_save_then_load_roundtrips", configStore.test_save_then_load_roundtrips)
+    run("ConfigStore.test_corrupt_file_is_backed_up_and_defaults_loaded", configStore.test_corrupt_file_is_backed_up_and_defaults_loaded)
+    run("ConfigStore.test_restoreDefaults_overwrites", configStore.test_restoreDefaults_overwrites)
 }
 
 print("ControlRingTests — checks: \(XCTestRegistry.checks), failures: \(XCTestRegistry.failures.count)")
