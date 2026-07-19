@@ -13,6 +13,11 @@ MainActor.assumeIsolated {
     run("CoreSpecs.test_iconSpec_roundTrips_all_cases", coreSpecs.test_iconSpec_roundTrips_all_cases)
     run("CoreSpecs.test_hotKeySpec_default_is_cmd_opt_shift_leftBracket", coreSpecs.test_hotKeySpec_default_is_cmd_opt_shift_leftBracket)
     run("CoreSpecs.test_actionType_and_availability_are_string_codable", coreSpecs.test_actionType_and_availability_are_string_codable)
+
+    // Task 3 & 4 — ConfigCodableTests
+    let configCodable = ConfigCodableTests()
+    run("ConfigCodable.test_action_roundTrips", configCodable.test_action_roundTrips)
+    run("ConfigCodable.test_action_defaults_when_optional_fields_missing", configCodable.test_action_defaults_when_optional_fields_missing)
 }
 
 print("ControlRingTests — checks: \(XCTestRegistry.checks), failures: \(XCTestRegistry.failures.count)")
