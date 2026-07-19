@@ -34,6 +34,12 @@ MainActor.assumeIsolated {
     run("ConfigStore.test_save_then_load_roundtrips", configStore.test_save_then_load_roundtrips)
     run("ConfigStore.test_corrupt_file_is_backed_up_and_defaults_loaded", configStore.test_corrupt_file_is_backed_up_and_defaults_loaded)
     run("ConfigStore.test_restoreDefaults_overwrites", configStore.test_restoreDefaults_overwrites)
+
+    // Task 7 — RingGeometryTests
+    let ringGeometry = RingGeometryTests()
+    run("RingGeometry.test_slot0_is_at_top", ringGeometry.test_slot0_is_at_top)
+    run("RingGeometry.test_indices_go_clockwise", ringGeometry.test_indices_go_clockwise)
+    run("RingGeometry.test_angle_step_is_uniform", ringGeometry.test_angle_step_is_uniform)
 }
 
 print("ControlRingTests — checks: \(XCTestRegistry.checks), failures: \(XCTestRegistry.failures.count)")
