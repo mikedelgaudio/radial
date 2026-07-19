@@ -61,6 +61,13 @@ MainActor.assumeIsolated {
     run("ActionRunner.test_script_plan_fails_on_empty_command", actionRunner.test_script_plan_fails_on_empty_command)
     run("ActionRunner.test_url_plan", actionRunner.test_url_plan)
     run("ActionRunner.test_folder_plan", actionRunner.test_folder_plan)
+
+    // Task 10 — HotKeyCarbonTests
+    let hotKey = HotKeyCarbonTests()
+    run("HotKey.test_modifier_mapping_combines_flags", hotKey.test_modifier_mapping_combines_flags)
+    run("HotKey.test_control_flag_maps", hotKey.test_control_flag_maps)
+    run("HotKey.test_unknown_modifier_ignored", hotKey.test_unknown_modifier_ignored)
+    run("HotKey.test_display_string", hotKey.test_display_string)
 }
 
 print("ControlRingTests — checks: \(XCTestRegistry.checks), failures: \(XCTestRegistry.failures.count)")
