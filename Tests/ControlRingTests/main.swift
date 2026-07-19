@@ -21,6 +21,12 @@ MainActor.assumeIsolated {
     run("ConfigCodable.test_mode_normalizes_to_eight_slots", configCodable.test_mode_normalizes_to_eight_slots)
     run("ConfigCodable.test_config_roundTrips", configCodable.test_config_roundTrips)
     run("ConfigCodable.test_mode_defaults_contextual_false_when_missing", configCodable.test_mode_defaults_contextual_false_when_missing)
+
+    // Task 5 — DefaultConfigTests
+    let defaultConfig = DefaultConfigTests()
+    run("DefaultConfig.test_default_has_expected_modes", defaultConfig.test_default_has_expected_modes)
+    run("DefaultConfig.test_apps_mode_seeds_known_apps_in_order", defaultConfig.test_apps_mode_seeds_known_apps_in_order)
+    run("DefaultConfig.test_default_config_is_codable_roundtrip", defaultConfig.test_default_config_is_codable_roundtrip)
 }
 
 print("ControlRingTests — checks: \(XCTestRegistry.checks), failures: \(XCTestRegistry.failures.count)")
