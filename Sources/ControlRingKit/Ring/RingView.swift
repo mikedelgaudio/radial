@@ -4,27 +4,45 @@ public struct RingView: View {
     @ObservedObject var viewModel: RingViewModel
     @Environment(\.colorScheme) private var scheme
     let onActivate: () -> Void
+    let onMoveDrag: () -> Void
+    let onMoveEnd: () -> Void
 
-    public init(viewModel: RingViewModel, onActivate: @escaping () -> Void) {
+    public init(viewModel: RingViewModel,
+                onActivate: @escaping () -> Void,
+                onMoveDrag: @escaping () -> Void = {},
+                onMoveEnd: @escaping () -> Void = {}) {
         self.viewModel = viewModel
         self.onActivate = onActivate
+        self.onMoveDrag = onMoveDrag
+        self.onMoveEnd = onMoveEnd
     }
 
     /// The ring is drawn centered inside a fixed transparent square so it can be
     /// resized without resizing the underlying window.
     public static let panelSize: CGFloat = RingMetrics.panelSize
-    private static let coordinateSpace = "ring"
+    private static let space = "ring"
     private var center: CGPoint { CGPoint(x: Self.panelSize / 2, y: Self.panelSize / 2) }
+    private var panelBox: CGSize { CGSize(width: Self.panelSize, height: Self.panelSize) }
 
     public var body: some View {
         let accent = Theme.accent(for: viewModel.currentMode)
         let m = RingMetrics(diameter: viewModel.diameter)
 
         ZStack {
+            // Draggable plate. Hovering it drives angle-select; dragging moves the window.
             Circle()
                 .fill(Theme.ringPlate(scheme))
                 .background(.ultraThinMaterial, in: Circle())
                 .frame(width: m.bezelRadius * 2, height: m.bezelRadius * 2)
+                .contentShape(Circle())
+                .onContinuousHover(coordinateSpace: .named(Self.space)) { phase in
+                    if case .active(let loc) = phase { viewModel.applyCursor(loc, in: panelBox) }
+                }
+                .gesture(
+                    DragGesture(minimumDistance: 2)
+                        .onChanged { _ in onMoveDrag() }
+                        .onEnded { _ in onMoveEnd() }
+                )
                 .position(center)
 
             RingBezelCanvas(bezelRadius: m.bezelRadius,
@@ -58,7 +76,7 @@ public struct RingView: View {
             }
         }
         .frame(width: Self.panelSize, height: Self.panelSize)
-        .coordinateSpace(name: Self.coordinateSpace)
+        .coordinateSpace(name: Self.space)
         .animation(.easeInOut(duration: 0.2), value: viewModel.transientMessage)
         .animation(.spring(response: 0.28, dampingFraction: 0.85), value: viewModel.diameter)
         .scaleEffect(viewModel.isOpen ? 1 : 0.86)
