@@ -15,8 +15,7 @@ struct OuterRingView: View {
                      selected: viewModel.focus == .outer && viewModel.outerIndex == i,
                      size: slotSize, accent: accent)
                 .position(geo.position(for: i))
-                .onHover { if $0 { viewModel.selectOuter(i) } }
-                .onTapGesture { viewModel.selectOuter(i); onActivate() }
+                .allowsHitTesting(false)
         }
     }
 }

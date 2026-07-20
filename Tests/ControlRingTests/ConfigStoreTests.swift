@@ -46,4 +46,25 @@ final class ConfigStoreTests: XCTestCase {
         store.restoreDefaults()
         XCTAssertEqual(store.config.modes.map(\.name), ["Apps", "Web", "Dev", "System"])
     }
+
+    func test_legacy_hotkey_is_migrated_to_new_default() throws {
+        let dir = tempDir()
+        // Seed a config file that still uses the original v1 hotkey.
+        let seeded = ConfigStore(directory: dir); seeded.load()
+        seeded.config.hotkey = .legacyDefault
+        seeded.save()
+        // A fresh load should migrate it to the new default (Option+Space).
+        let reloaded = ConfigStore(directory: dir); reloaded.load()
+        XCTAssertEqual(reloaded.config.hotkey, HotKeySpec.default)
+    }
+
+    func test_custom_hotkey_is_preserved_on_load() throws {
+        let dir = tempDir()
+        let custom = HotKeySpec(keyCode: 49, modifiers: ["command", "shift"])
+        let seeded = ConfigStore(directory: dir); seeded.load()
+        seeded.config.hotkey = custom
+        seeded.save()
+        let reloaded = ConfigStore(directory: dir); reloaded.load()
+        XCTAssertEqual(reloaded.config.hotkey, custom)
+    }
 }

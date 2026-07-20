@@ -20,9 +20,7 @@ struct CenterHubView: View {
                 .frame(width: radius * 0.8, height: radius * 0.8)
         }
         .frame(width: radius * 2, height: radius * 2)
-        .contentShape(Circle())
-        .onHover { if $0 { viewModel.focus = .center } }
-        .onTapGesture { viewModel.focus = .center; onActivate() }
+        .allowsHitTesting(false)
         .animation(.spring(response: 0.25, dampingFraction: 0.7), value: selected)
     }
 }

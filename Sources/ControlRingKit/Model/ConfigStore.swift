@@ -24,9 +24,19 @@ public final class ConfigStore: ObservableObject {
         do {
             let data = try Data(contentsOf: fileURL)
             config = try JSONDecoder().decode(Config.self, from: data)
+            migrate()
         } catch {
             backupCorruptFile()
             config = DefaultConfig.make()
+            writeToDisk()
+        }
+    }
+
+    /// One-time upgrades for existing config files. Only rewrites the hotkey when it
+    /// still matches the original v1 default, so a user's custom hotkey is never touched.
+    private func migrate() {
+        if config.hotkey == HotKeySpec.legacyDefault {
+            config.hotkey = .default
             writeToDisk()
         }
     }

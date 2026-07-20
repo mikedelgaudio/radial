@@ -11,7 +11,7 @@ MainActor.assumeIsolated {
     run("CoreSpecs.test_kit_links", coreSpecs.test_kit_links)
     run("CoreSpecs.test_colorSpec_roundTrips_named_and_rgba", coreSpecs.test_colorSpec_roundTrips_named_and_rgba)
     run("CoreSpecs.test_iconSpec_roundTrips_all_cases", coreSpecs.test_iconSpec_roundTrips_all_cases)
-    run("CoreSpecs.test_hotKeySpec_default_is_cmd_opt_shift_leftBracket", coreSpecs.test_hotKeySpec_default_is_cmd_opt_shift_leftBracket)
+    run("CoreSpecs.test_hotKeySpec_default_is_option_space", coreSpecs.test_hotKeySpec_default_is_option_space)
     run("CoreSpecs.test_actionType_and_availability_are_string_codable", coreSpecs.test_actionType_and_availability_are_string_codable)
 
     // Task 3 & 4 — ConfigCodableTests
@@ -36,6 +36,8 @@ MainActor.assumeIsolated {
     run("ConfigStore.test_save_then_load_roundtrips", configStore.test_save_then_load_roundtrips)
     run("ConfigStore.test_corrupt_file_is_backed_up_and_defaults_loaded", configStore.test_corrupt_file_is_backed_up_and_defaults_loaded)
     run("ConfigStore.test_restoreDefaults_overwrites", configStore.test_restoreDefaults_overwrites)
+    run("ConfigStore.test_legacy_hotkey_is_migrated_to_new_default", configStore.test_legacy_hotkey_is_migrated_to_new_default)
+    run("ConfigStore.test_custom_hotkey_is_preserved_on_load", configStore.test_custom_hotkey_is_preserved_on_load)
 
     // Task 7 — RingGeometryTests
     let ringGeometry = RingGeometryTests()

@@ -74,7 +74,13 @@ public struct HotKeySpec: Codable, Equatable, Hashable {
         self.keyCode = keyCode
         self.modifiers = modifiers
     }
+    /// Default summon hotkey: ⌥Space (Option+Space). kVK_Space = 49.
     public static let `default` = HotKeySpec(
+        keyCode: 49, modifiers: ["option"]
+    )
+
+    /// The original v1 default (⌘⌥⇧[); used to migrate existing configs.
+    public static let legacyDefault = HotKeySpec(
         keyCode: 33, modifiers: ["command", "option", "shift"]
     )
 }

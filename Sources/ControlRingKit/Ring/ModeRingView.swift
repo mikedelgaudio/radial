@@ -14,10 +14,7 @@ struct ModeRingView: View {
         ForEach(0..<count, id: \.self) { i in
             chip(for: i)
                 .position(geo.position(for: i))
-                .onHover { if $0 { viewModel.focus = .inner; viewModel.innerIndex = i } }
-                .onTapGesture {
-                    viewModel.focus = .inner; viewModel.innerIndex = i; onActivate()
-                }
+                .allowsHitTesting(false)
         }
     }
 

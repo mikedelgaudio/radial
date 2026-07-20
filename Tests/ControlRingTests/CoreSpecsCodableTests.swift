@@ -23,10 +23,10 @@ final class CoreSpecsCodableTests: XCTestCase {
         try roundTrip(IconSpec.glyph("apps-grid"))
     }
 
-    func test_hotKeySpec_default_is_cmd_opt_shift_leftBracket() {
+    func test_hotKeySpec_default_is_option_space() {
         let hk = HotKeySpec.default
-        XCTAssertEqual(hk.keyCode, 33) // kVK_ANSI_LeftBracket
-        XCTAssertEqual(Set(hk.modifiers), ["command", "option", "shift"])
+        XCTAssertEqual(hk.keyCode, 49) // kVK_Space
+        XCTAssertEqual(Set(hk.modifiers), ["option"])
     }
 
     func test_actionType_and_availability_are_string_codable() throws {

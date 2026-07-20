@@ -3,6 +3,7 @@ import SwiftUI
 public struct RingView: View {
     @ObservedObject var viewModel: RingViewModel
     @Environment(\.colorScheme) private var scheme
+    @State private var isDragging = false
     let onActivate: () -> Void
     let onMoveDrag: () -> Void
     let onMoveEnd: () -> Void
@@ -23,26 +24,18 @@ public struct RingView: View {
     private static let space = "ring"
     private var center: CGPoint { CGPoint(x: Self.panelSize / 2, y: Self.panelSize / 2) }
     private var panelBox: CGSize { CGSize(width: Self.panelSize, height: Self.panelSize) }
+    private static let dragThreshold: CGFloat = 6
 
     public var body: some View {
         let accent = Theme.accent(for: viewModel.currentMode)
         let m = RingMetrics(diameter: viewModel.diameter)
 
         ZStack {
-            // Draggable plate. Hovering it drives angle-select; dragging moves the window.
+            // Visual layers (non-interactive — all input goes through the overlay below).
             Circle()
                 .fill(Theme.ringPlate(scheme))
                 .background(.ultraThinMaterial, in: Circle())
                 .frame(width: m.bezelRadius * 2, height: m.bezelRadius * 2)
-                .contentShape(Circle())
-                .onContinuousHover(coordinateSpace: .named(Self.space)) { phase in
-                    if case .active(let loc) = phase { viewModel.applyCursor(loc, in: panelBox) }
-                }
-                .gesture(
-                    DragGesture(minimumDistance: 2)
-                        .onChanged { _ in onMoveDrag() }
-                        .onEnded { _ in onMoveEnd() }
-                )
                 .position(center)
 
             RingBezelCanvas(bezelRadius: m.bezelRadius,
@@ -59,6 +52,10 @@ public struct RingView: View {
                           accent: accent, onActivate: onActivate)
                 .position(center)
 
+            // Single input layer: hover = angle-select, tap = activate, drag = move window.
+            inputOverlay(radius: m.bezelRadius)
+
+            // Resize handles sit above the input layer so they win drags at the corners.
             ResizeHandlesView(center: center, radius: m.handleRadius,
                               handleSize: m.chipSize * 0.5, accent: accent) { location in
                 let dist = hypot(location.x - center.x, location.y - center.y)
@@ -82,6 +79,40 @@ public struct RingView: View {
         .scaleEffect(viewModel.isOpen ? 1 : 0.86)
         .opacity(viewModel.isOpen ? 1 : 0)
         .animation(.spring(response: 0.34, dampingFraction: 0.82), value: viewModel.isOpen)
+    }
+
+    private func inputOverlay(radius: CGFloat) -> some View {
+        Circle()
+            .fill(Color.white.opacity(0.001)) // effectively transparent but hit-testable
+            .frame(width: radius * 2, height: radius * 2)
+            .contentShape(Circle())
+            .position(center)
+            .onContinuousHover(coordinateSpace: .named(Self.space)) { phase in
+                if case .active(let loc) = phase, !isDragging {
+                    viewModel.applyCursor(loc, in: panelBox)
+                }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.space))
+                    .onChanged { value in
+                        let moved = hypot(value.translation.width, value.translation.height)
+                        if isDragging || moved > Self.dragThreshold {
+                            isDragging = true
+                            onMoveDrag()
+                        } else {
+                            viewModel.applyCursor(value.location, in: panelBox)
+                        }
+                    }
+                    .onEnded { value in
+                        if isDragging {
+                            onMoveEnd()
+                        } else {
+                            viewModel.applyCursor(value.location, in: panelBox)
+                            onActivate()
+                        }
+                        isDragging = false
+                    }
+            )
     }
 }
 
