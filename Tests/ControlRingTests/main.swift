@@ -21,6 +21,8 @@ MainActor.assumeIsolated {
     run("ConfigCodable.test_mode_normalizes_to_eight_slots", configCodable.test_mode_normalizes_to_eight_slots)
     run("ConfigCodable.test_config_roundTrips", configCodable.test_config_roundTrips)
     run("ConfigCodable.test_mode_defaults_contextual_false_when_missing", configCodable.test_mode_defaults_contextual_false_when_missing)
+    run("ConfigCodable.test_settings_persists_ring_size_and_position", configCodable.test_settings_persists_ring_size_and_position)
+    run("ConfigCodable.test_settings_defaults_when_size_position_absent", configCodable.test_settings_defaults_when_size_position_absent)
 
     // Task 5 — DefaultConfigTests
     let defaultConfig = DefaultConfigTests()
@@ -40,6 +42,8 @@ MainActor.assumeIsolated {
     run("RingGeometry.test_slot0_is_at_top", ringGeometry.test_slot0_is_at_top)
     run("RingGeometry.test_indices_go_clockwise", ringGeometry.test_indices_go_clockwise)
     run("RingGeometry.test_angle_step_is_uniform", ringGeometry.test_angle_step_is_uniform)
+    run("RingGeometry.test_nearestIndex_by_direction", ringGeometry.test_nearestIndex_by_direction)
+    run("RingGeometry.test_nearestIndex_snaps_to_closest", ringGeometry.test_nearestIndex_snaps_to_closest)
 
     // Task 8 — RingViewModelTests (@MainActor)
     let ringVM = RingViewModelTests()
@@ -52,6 +56,11 @@ MainActor.assumeIsolated {
     run("RingVM.test_activate_inner_settings_item_returns_openSettings", ringVM.test_activate_inner_settings_item_returns_openSettings)
     run("RingVM.test_activate_inner_addMode_item_returns_addMode", ringVM.test_activate_inner_addMode_item_returns_addMode)
     run("RingVM.test_activate_center_opens_settings", ringVM.test_activate_center_opens_settings)
+    run("RingVM.test_setDiameter_clamps_to_bounds", ringVM.test_setDiameter_clamps_to_bounds)
+    run("RingVM.test_applyCursor_center_focuses_center", ringVM.test_applyCursor_center_focuses_center)
+    run("RingVM.test_applyCursor_outer_top_selects_slot0", ringVM.test_applyCursor_outer_top_selects_slot0)
+    run("RingVM.test_applyCursor_inner_band_focuses_inner", ringVM.test_applyCursor_inner_band_focuses_inner)
+    run("RingVM.test_applyCursor_outside_ring_keeps_selection", ringVM.test_applyCursor_outside_ring_keeps_selection)
 
     // Task 9 — ActionRunnerTests
     let actionRunner = ActionRunnerTests()

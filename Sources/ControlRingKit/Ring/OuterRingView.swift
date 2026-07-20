@@ -4,6 +4,7 @@ struct OuterRingView: View {
     @ObservedObject var viewModel: RingViewModel
     let center: CGPoint
     let radius: CGFloat
+    let slotSize: CGFloat
     let accent: Color
     let onActivate: () -> Void
 
@@ -12,7 +13,7 @@ struct OuterRingView: View {
         ForEach(0..<Mode.slotCount, id: \.self) { i in
             SlotTile(action: viewModel.currentMode?.slots[safe: i]?.action,
                      selected: viewModel.focus == .outer && viewModel.outerIndex == i,
-                     accent: accent)
+                     size: slotSize, accent: accent)
                 .position(geo.position(for: i))
                 .onHover { if $0 { viewModel.selectOuter(i) } }
                 .onTapGesture { viewModel.selectOuter(i); onActivate() }

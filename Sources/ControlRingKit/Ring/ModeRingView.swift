@@ -4,6 +4,7 @@ struct ModeRingView: View {
     @ObservedObject var viewModel: RingViewModel
     let center: CGPoint
     let radius: CGFloat
+    let chipSize: CGFloat
     let accent: Color
     let onActivate: () -> Void
 
@@ -41,12 +42,13 @@ struct ModeRingView: View {
                     Circle().fill(current ? tint.opacity(0.28) : Color.gray.opacity(0.12))
                     IconView(spec: icon)
                         .foregroundStyle(current ? tint : .primary.opacity(0.8))
-                        .padding(10)
+                        .padding(chipSize * 0.25)
                 }
             }
         }
-        .frame(width: 40, height: 40)
+        .frame(width: chipSize, height: chipSize)
         .overlay(Circle().stroke(accent, lineWidth: selected ? 2 : 0))
+        .shadow(color: selected ? accent.opacity(0.5) : .clear, radius: selected ? 10 : 0)
         .scaleEffect(selected ? 1.18 : 1)
         .animation(.spring(response: 0.25, dampingFraction: 0.7), value: selected)
     }

@@ -76,4 +76,52 @@ final class RingViewModelTests: XCTestCase {
         m.focus = .center
         XCTAssertEqual(m.activate(), .openSettings)
     }
+
+    func test_setDiameter_clamps_to_bounds() {
+        let m = vm()
+        m.setDiameter(10_000)
+        XCTAssertEqual(m.diameter, RingMetrics.maxDiameter, accuracy: 0.0001)
+        m.setDiameter(1)
+        XCTAssertEqual(m.diameter, RingMetrics.minDiameter, accuracy: 0.0001)
+    }
+
+    func test_applyCursor_center_focuses_center() {
+        let m = vm()
+        m.setDiameter(RingMetrics.defaultDiameter)
+        let side = RingMetrics.panelSize
+        m.applyCursor(CGPoint(x: side / 2, y: side / 2), in: CGSize(width: side, height: side))
+        XCTAssertEqual(m.focus, .center)
+    }
+
+    func test_applyCursor_outer_top_selects_slot0() {
+        let m = vm()
+        m.setDiameter(RingMetrics.defaultDiameter)
+        let side = RingMetrics.panelSize
+        let metrics = RingMetrics(diameter: m.diameter)
+        // Straight up, out at the outer ring radius.
+        m.applyCursor(CGPoint(x: side / 2, y: side / 2 - metrics.outerRadius),
+                      in: CGSize(width: side, height: side))
+        XCTAssertEqual(m.focus, .outer)
+        XCTAssertEqual(m.outerIndex, 0)
+    }
+
+    func test_applyCursor_inner_band_focuses_inner() {
+        let m = vm()
+        m.setDiameter(RingMetrics.defaultDiameter)
+        let side = RingMetrics.panelSize
+        let metrics = RingMetrics(diameter: m.diameter)
+        m.applyCursor(CGPoint(x: side / 2, y: side / 2 - metrics.innerRadius),
+                      in: CGSize(width: side, height: side))
+        XCTAssertEqual(m.focus, .inner)
+    }
+
+    func test_applyCursor_outside_ring_keeps_selection() {
+        let m = vm()
+        m.setDiameter(RingMetrics.defaultDiameter)
+        m.focus = .outer; m.outerIndex = 3
+        let side = RingMetrics.panelSize
+        m.applyCursor(CGPoint(x: side / 2, y: 1), in: CGSize(width: side, height: side)) // far above ring
+        XCTAssertEqual(m.focus, .outer)
+        XCTAssertEqual(m.outerIndex, 3)
+    }
 }

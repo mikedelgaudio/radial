@@ -56,4 +56,23 @@ final class ConfigCodableTests: XCTestCase {
         XCTAssertFalse(m.contextual)
         XCTAssertEqual(m.slots.count, Mode.slotCount) // normalized on decode
     }
+
+    func test_settings_persists_ring_size_and_position() throws {
+        var s = Settings()
+        s.ringDiameter = 640
+        s.ringOriginX = 120.5
+        s.ringOriginY = -40
+        let data = try JSONEncoder().encode(s)
+        let back = try JSONDecoder().decode(Settings.self, from: data)
+        XCTAssertEqual(back, s)
+        XCTAssertEqual(back.ringDiameter, 640)
+    }
+
+    func test_settings_defaults_when_size_position_absent() throws {
+        let json = "{\"showInMenuBar\":true}".data(using: .utf8)!
+        let s = try JSONDecoder().decode(Settings.self, from: json)
+        XCTAssertNil(s.ringDiameter)
+        XCTAssertNil(s.ringOriginX)
+        XCTAssertNil(s.ringOriginY)
+    }
 }

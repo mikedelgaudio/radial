@@ -22,13 +22,45 @@ public final class RingViewModel: ObservableObject {
     @Published public var innerIndex = 0
     @Published public var currentModeIndex = 0
     @Published public var transientMessage: String?
+    /// Current ring diameter (persisted). Drives `RingMetrics`.
+    @Published public var diameter: CGFloat = RingMetrics.defaultDiameter
 
     public init(store: ConfigStore) {
         self.store = store
         store.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
+        if let saved = store.config.settings.ringDiameter {
+            diameter = RingMetrics.clamp(CGFloat(saved))
+        }
         clampModeIndex()
+    }
+
+    /// Set the ring diameter, clamped to the allowed range.
+    public func setDiameter(_ d: CGFloat) {
+        diameter = RingMetrics.clamp(d)
+    }
+
+    /// Update focus + selection from a cursor position in the ring's coordinate
+    /// space (top-left origin, y-down), where the ring is centered in a square of
+    /// side `size`. Radial distance chooses the ring; angle chooses the slot.
+    /// Cursor positions beyond the ring are ignored (selection is left unchanged).
+    public func applyCursor(_ point: CGPoint, in size: CGSize) {
+        let metrics = RingMetrics(diameter: diameter)
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        let r = hypot(point.x - center.x, point.y - center.y)
+        if r <= metrics.centerBand {
+            focus = .center
+        } else if r <= metrics.innerOuterBoundary {
+            focus = .inner
+            innerIndex = RingGeometry(slotCount: innerItemCount, center: center, radius: 1)
+                .nearestIndex(to: point)
+        } else if r <= metrics.bezelRadius {
+            focus = .outer
+            outerIndex = RingGeometry(slotCount: Mode.slotCount, center: center, radius: 1)
+                .nearestIndex(to: point)
+        }
+        // else: cursor outside the ring — keep current selection.
     }
 
     public var config: Config { store.config }

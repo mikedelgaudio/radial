@@ -9,6 +9,7 @@ public final class RingWindowController: NSObject, NSWindowDelegate {
 
     private var panel: RingPanel?
     private var keyMonitor: Any?
+    private var mouseMoveMonitor: Any?
     private var clickMonitor: Any?
     private var localClickMonitor: Any?
     private var previousApp: NSRunningApplication?
@@ -28,13 +29,17 @@ public final class RingWindowController: NSObject, NSWindowDelegate {
         previousApp = NSWorkspace.shared.frontmostApplication
         viewModel.reset()
 
-        let panel = RingPanel(size: CGSize(width: RingView.diameter, height: RingView.diameter))
+        let side = RingView.panelSize
+        let panel = RingPanel(size: CGSize(width: side, height: side))
+        panel.isMovableByWindowBackground = true      // drag the ring to move it
+        panel.acceptsMouseMovedEvents = true          // cursor angle-select
         let host = NSHostingView(rootView: RingView(viewModel: viewModel) { [weak self] in
             self?.handleActivation()
         })
         host.frame = NSRect(origin: .zero, size: panel.frame.size)
+        host.autoresizingMask = [.width, .height]
         panel.contentView = host
-        centerOnActiveScreen(panel)
+        positionPanel(panel)
         panel.delegate = self
         panel.makeKeyAndOrderFront(nil)
         self.panel = panel
@@ -44,6 +49,7 @@ public final class RingWindowController: NSObject, NSWindowDelegate {
     }
 
     public func hide() {
+        persistFrameAndSize()
         viewModel.isOpen = false
         viewModel.transientMessage = nil
         removeMonitors()
@@ -104,27 +110,36 @@ public final class RingWindowController: NSObject, NSWindowDelegate {
             guard let self, self.viewModel.isOpen else { return event }
             return self.handleKey(event) ? nil : event
         }
+        // Cursor angle-select: track pointer movement over the ring.
+        mouseMoveMonitor = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
+            guard let self, let panel = self.panel, event.window === panel else { return event }
+            let size = panel.frame.size
+            // Convert AppKit (bottom-left) to view coords (top-left, y-down).
+            let point = CGPoint(x: event.locationInWindow.x, y: size.height - event.locationInWindow.y)
+            self.viewModel.applyCursor(point, in: size)
+            return event
+        }
         // Clicks in other apps (panel is non-activating): close.
         clickMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             self?.hide()
         }
-        // Clicks inside our panel but outside the ring circle (transparent corners): close.
+        // Clicks inside our panel but outside the ring: close.
         localClickMonitor = NSEvent.addLocalMonitorForEvents(
             matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             guard let self, let panel = self.panel, event.window === panel else { return event }
-            let p = event.locationInWindow // panel/content coords (origin bottom-left)
+            let p = event.locationInWindow // panel coords (origin bottom-left)
             let c = CGPoint(x: panel.frame.width / 2, y: panel.frame.height / 2)
-            let ringRadius = min(panel.frame.width, panel.frame.height) / 2
-            if hypot(p.x - c.x, p.y - c.y) > ringRadius { self.hide(); return nil }
+            let dismissRadius = RingMetrics(diameter: self.viewModel.diameter).dismissRadius
+            if hypot(p.x - c.x, p.y - c.y) > dismissRadius { self.hide(); return nil }
             return event
         }
     }
     private func removeMonitors() {
-        for m in [keyMonitor, clickMonitor, localClickMonitor] {
+        for m in [keyMonitor, mouseMoveMonitor, clickMonitor, localClickMonitor] {
             if let m { NSEvent.removeMonitor(m) }
         }
-        keyMonitor = nil; clickMonitor = nil; localClickMonitor = nil
+        keyMonitor = nil; mouseMoveMonitor = nil; clickMonitor = nil; localClickMonitor = nil
     }
 
     private func handleKey(_ event: NSEvent) -> Bool {
@@ -142,6 +157,31 @@ public final class RingWindowController: NSObject, NSWindowDelegate {
             }
             return false
         }
+    }
+
+    /// Place the panel at the saved position (from a prior drag), or centered on the
+    /// screen containing the cursor on first use. Off-screen saved positions fall back
+    /// to centering.
+    private func positionPanel(_ panel: NSPanel) {
+        let size = panel.frame.size
+        let settings = store.config.settings
+        if let x = settings.ringOriginX, let y = settings.ringOriginY {
+            let origin = CGPoint(x: x, y: y)
+            let frame = NSRect(origin: origin, size: size)
+            if NSScreen.screens.contains(where: { $0.frame.intersects(frame) }) {
+                panel.setFrameOrigin(origin)
+                return
+            }
+        }
+        centerOnActiveScreen(panel)
+    }
+
+    private func persistFrameAndSize() {
+        guard let panel else { return }
+        store.config.settings.ringOriginX = Double(panel.frame.origin.x)
+        store.config.settings.ringOriginY = Double(panel.frame.origin.y)
+        store.config.settings.ringDiameter = Double(viewModel.diameter)
+        store.save()
     }
 
     private func centerOnActiveScreen(_ panel: NSPanel) {

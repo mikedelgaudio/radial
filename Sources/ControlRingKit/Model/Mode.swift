@@ -59,12 +59,29 @@ public struct Mode: Codable, Equatable, Identifiable, Hashable {
 
 public struct Settings: Codable, Equatable, Hashable {
     public var showInMenuBar: Bool
-    public init(showInMenuBar: Bool = true) { self.showInMenuBar = showInMenuBar }
+    public var ringDiameter: Double?
+    public var ringOriginX: Double?
+    public var ringOriginY: Double?
 
-    private enum CodingKeys: String, CodingKey { case showInMenuBar }
+    public init(showInMenuBar: Bool = true,
+                ringDiameter: Double? = nil,
+                ringOriginX: Double? = nil,
+                ringOriginY: Double? = nil) {
+        self.showInMenuBar = showInMenuBar
+        self.ringDiameter = ringDiameter
+        self.ringOriginX = ringOriginX
+        self.ringOriginY = ringOriginY
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case showInMenuBar, ringDiameter, ringOriginX, ringOriginY
+    }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         showInMenuBar = try c.decodeIfPresent(Bool.self, forKey: .showInMenuBar) ?? true
+        ringDiameter = try c.decodeIfPresent(Double.self, forKey: .ringDiameter)
+        ringOriginX = try c.decodeIfPresent(Double.self, forKey: .ringOriginX)
+        ringOriginY = try c.decodeIfPresent(Double.self, forKey: .ringOriginY)
     }
 }
 

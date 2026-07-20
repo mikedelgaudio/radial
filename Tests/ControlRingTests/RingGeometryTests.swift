@@ -21,4 +21,18 @@ final class RingGeometryTests: XCTestCase {
         XCTAssertEqual(g.angleDegrees(for: 0), -90, accuracy: 0.0001)
         XCTAssertEqual(g.angleDegrees(for: 1), 0, accuracy: 0.0001)
     }
+
+    func test_nearestIndex_by_direction() {
+        let g = RingGeometry(slotCount: 8, center: CGPoint(x: 100, y: 100), radius: 50)
+        XCTAssertEqual(g.nearestIndex(to: CGPoint(x: 100, y: 10)), 0)   // up
+        XCTAssertEqual(g.nearestIndex(to: CGPoint(x: 190, y: 100)), 2)  // right
+        XCTAssertEqual(g.nearestIndex(to: CGPoint(x: 100, y: 190)), 4)  // down
+        XCTAssertEqual(g.nearestIndex(to: CGPoint(x: 10, y: 100)), 6)   // left
+    }
+
+    func test_nearestIndex_snaps_to_closest() {
+        let g = RingGeometry(slotCount: 8, center: .zero, radius: 1)
+        // Slightly clockwise of straight up should still snap to slot 0.
+        XCTAssertEqual(g.nearestIndex(to: CGPoint(x: 5, y: -100)), 0)
+    }
 }
